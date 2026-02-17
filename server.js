@@ -48,7 +48,7 @@ app.post("/v1/chat/completions", async (req, res) => {
   try {
     const { model, messages, temperature, max_tokens, stream } = req.body;
 
-    const nimModel = MODEL_MAPPING[model] || FALLBACK_MODEL;
+    const nimModel = MODEL_MAPPING[model];
 
     const nimRequest = {
       model: nimModel,
