@@ -92,6 +92,9 @@ app.post("/v1/chat/completions", async (req, res) => {
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
       res.flushHeaders();
+      // 🔑 unblock OpenAI SDK immediately
+      res.write("data: {}\n\n");
+
 
       let buffer = "";
 
