@@ -1,5 +1,3 @@
-// server.js — OpenAI → NVIDIA NIM Proxy (FINAL)
-
 import express from "express";
 import cors from "cors";
 import axios from "axios";
@@ -7,43 +5,30 @@ import axios from "axios";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// -------------------- Middleware --------------------
 app.use(cors());
 app.use(express.json());
 
-// -------------------- NIM Config --------------------
+// ---- NIM config ----
 const NIM_API_BASE =
   process.env.NIM_API_BASE || "https://integrate.api.nvidia.com/v1";
 const NIM_API_KEY = process.env.NIM_API_KEY;
 
-// -------------------- Feature Toggles --------------------
-const SHOW_REASONING = false;
-const ENABLE_THINKING_MODE = false;
-
-// -------------------- Model Mapping (SAFE) --------------------
+// ---- model mapping (safe) ----
 const MODEL_MAPPING = {
-  'gpt-3.5-turbo': 'nvidia/llama-3.1-nemotron-ultra-253b-v1',
-  'gpt-4': 'deepseek-ai/deepseek-v3.2',
-  'gpt-4-turbo': 'moonshotai/kimi-k2-instruct-0905',
-  'gpt-4o': 'moonshotai/kimi-k2.5',
-  'claude-3-opus': 'z-ai/glm4.7',
-  'claude-3-sonnet': 'openai/gpt-oss-20b',
-  'gemini-pro': 'z-ai/glm5'
+  "gpt-4o": "meta/llama-3.1-70b-instruct",
+  "gpt-4": "meta/llama-3.1-70b-instruct",
+  "gpt-3.5-turbo": "meta/llama-3.1-8b-instruct",
+  "gemini-pro": "meta/llama-3.1-70b-instruct"
 };
 
 const FALLBACK_MODEL = "meta/llama-3.1-8b-instruct";
 
-// -------------------- Health --------------------
+// ---- health ----
 app.get("/health", (_, res) => {
-  res.json({
-    status: "ok",
-    service: "OpenAI → NVIDIA NIM Proxy",
-    reasoning: SHOW_REASONING,
-    thinking: ENABLE_THINKING_MODE
-  });
+  res.json({ status: "ok" });
 });
 
-// -------------------- Models --------------------
+// ---- models (OpenAI compatible) ----
 app.get("/v1/models", (_, res) => {
   res.json({
     object: "list",
@@ -55,7 +40,7 @@ app.get("/v1/models", (_, res) => {
   });
 });
 
-// -------------------- Chat Completions --------------------
+// ---- chat completions ----
 app.post("/v1/chat/completions", async (req, res) => {
   try {
     const { model, messages, temperature, max_tokens, stream } = req.body;
@@ -65,12 +50,9 @@ app.post("/v1/chat/completions", async (req, res) => {
     const nimRequest = {
       model: nimModel,
       messages,
-      temperature: temperature ?? 0.6,
+      temperature: temperature ?? 0.7,
       max_tokens: max_tokens ?? 4096,
-      stream: Boolean(stream),
-      ...(ENABLE_THINKING_MODE && {
-        extra_body: { chat_template_kwargs: { thinking: true } }
-      })
+      stream: Boolean(stream)
     };
 
     const nimResponse = await axios.post(
@@ -79,104 +61,50 @@ app.post("/v1/chat/completions", async (req, res) => {
       {
         headers: {
           Authorization: `Bearer ${NIM_API_KEY}`,
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          "Accept": stream ? "text/event-stream" : "application/json"
         },
         responseType: stream ? "stream" : "json",
         proxy: false
       }
     );
 
-    // ---------------- STREAMING ----------------
+    // ---- STREAMING: PASS THROUGH ----
     if (stream) {
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
       res.flushHeaders();
-      // 🔑 unblock OpenAI SDK immediately
-      res.write("data: {}\n\n");
 
+      // CRITICAL: raw passthrough (no parsing)
+      nimResponse.data.pipe(res);
 
-      let buffer = "";
-
-      nimResponse.data.on("data", chunk => {
-        buffer += chunk.toString();
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data:")) continue;
-          if (line.includes("[DONE]")) {
-            res.write("data: [DONE]\n\n");
-            return;
-          }
-
-          try {
-            const parsed = JSON.parse(line.slice(5));
-            const delta = parsed.choices?.[0]?.delta ?? {};
-
-            let content = delta.content ?? "";
-            const reasoning = delta.reasoning_content ?? "";
-
-            if (SHOW_REASONING && reasoning) {
-              content = `<think>${reasoning}</think>\n\n${content}`;
-            }
-
-            parsed.choices[0].delta = { content };
-            res.write(`data: ${JSON.stringify(parsed)}\n\n`);
-          } catch {
-            // ignore malformed chunks
-          }
-        }
-      });
-
-      nimResponse.data.on("end", () => res.end());
       nimResponse.data.on("error", () => res.end());
       return;
     }
 
-    // ---------------- NON-STREAM ----------------
-    const openaiResponse = {
+    // ---- NON-STREAM ----
+    res.json({
       id: `chatcmpl-${Date.now()}`,
       object: "chat.completion",
       created: Math.floor(Date.now() / 1000),
       model,
-      choices: nimResponse.data.choices.map(c => ({
-        index: c.index,
-        message: {
-          role: "assistant",
-          content: SHOW_REASONING && c.message?.reasoning_content
-            ? `<think>${c.message.reasoning_content}</think>\n\n${c.message.content}`
-            : c.message.content
-        },
-        finish_reason: c.finish_reason
-      })),
+      choices: nimResponse.data.choices,
       usage: nimResponse.data.usage ?? {}
-    };
-
-    res.json(openaiResponse);
+    });
   } catch (err) {
     console.error("Proxy error:", err?.response?.data || err.message);
     res.status(500).json({
-      error: {
-        message: "Upstream NIM error",
-        type: "proxy_error"
-      }
+      error: { message: "Upstream NIM error" }
     });
   }
 });
 
-// -------------------- 404 --------------------
+// ---- Express 5 catch-all ----
 app.use((req, res) => {
-  res.status(404).json({
-    error: {
-      message: `Endpoint ${req.path} not found`,
-      type: "invalid_request_error",
-      code: 404
-    }
-  });
+  res.status(404).json({ error: { message: "Not found" } });
 });
 
-// -------------------- Start --------------------
 app.listen(PORT, () => {
   console.log(`🚀 Proxy running on port ${PORT}`);
 });
