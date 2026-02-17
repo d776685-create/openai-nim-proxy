@@ -163,8 +163,14 @@ app.post("/v1/chat/completions", async (req, res) => {
 });
 
 // -------------------- 404 --------------------
-app.all("*", (_, res) => {
-  res.status(404).json({ error: { message: "Not found" } });
+app.use((req, res) => {
+  res.status(404).json({
+    error: {
+      message: `Endpoint ${req.path} not found`,
+      type: "invalid_request_error",
+      code: 404
+    }
+  });
 });
 
 // -------------------- Start --------------------
