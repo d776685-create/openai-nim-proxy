@@ -6,8 +6,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
 
 // ---- NIM config ----
@@ -64,7 +64,7 @@ app.post("/v1/chat/completions", async (req, res) => {
 if (nimModel.includes('deepseek') || nimModel.includes('kimi')) {
     nimRequest.chat_template_kwargs = {
         thinking: true,
-        reasoning_effort:"max"
+        reasoning_effort:"high"
     };
 } else if (nimModel.includes('glm') || nimModel.includes('qwen') || nimModel.includes('nemotron')) {
     nimRequest.chat_template_kwargs = {
