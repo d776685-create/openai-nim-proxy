@@ -53,13 +53,23 @@ app.post("/v1/chat/completions", async (req, res) => {
     const nimModel = MODEL_MAPPING[model];
 
     const nimRequest = {
-      model: nimModel,
-      messages,
-      temperature: temperature ?? 0.7,
-      max_tokens: max_tokens ?? 32000,
-      chat_template_kwargs: { thinking:true},
-      stream: Boolean(stream)
+    model: nimModel,
+    messages,
+    temperature: temperature ?? 0.7,
+    max_tokens: max_tokens ?? 32000,
+    stream: Boolean(stream),
+};
+
+// Conditionally add chat_template_kwargs based on model type
+if (nimModel.includes('deepseek') || nimModel.includes('kimi')) {
+    nimRequest.chat_template_kwargs = {
+        thinking: true
     };
+} else if (nimModel.includes('glm') || nimModel.includes('qwen') || nimModel.includes('nemotron')) {
+    nimRequest.chat_template_kwargs = {
+        enable_thinking: true
+    };
+}
 
     const nimResponse = await axios.post(
       `${NIM_API_BASE}/chat/completions`,
