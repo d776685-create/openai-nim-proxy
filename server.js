@@ -63,7 +63,7 @@ app.post("/v1/chat/completions", async (req, res) => {
 // Conditionally add chat_template_kwargs based on model type
 if (nimModel.includes('deepseek') || nimModel.includes('kimi')) {
     nimRequest.chat_template_kwargs = {
-        thinking: true
+        thinking: false
     };
 } else if (nimModel.includes('glm') || nimModel.includes('qwen') || nimModel.includes('nemotron')) {
     nimRequest.chat_template_kwargs = {
