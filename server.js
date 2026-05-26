@@ -60,16 +60,6 @@ app.post("/v1/chat/completions", async (req, res) => {
     stream: Boolean(stream),
 };
 
-// Conditionally add chat_template_kwargs based on model type
-if (nimModel.includes('deepseek') || nimModel.includes('kimi')) {
-    nimRequest.chat_template_kwargs = {
-        thinking: false
-    };
-} else if (nimModel.includes('glm') || nimModel.includes('qwen') || nimModel.includes('nemotron')) {
-    nimRequest.chat_template_kwargs = {
-        enable_thinking: true
-    };
-}
 
     const nimResponse = await axios.post(
       `${NIM_API_BASE}/chat/completions`,
