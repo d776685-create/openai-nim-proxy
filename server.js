@@ -64,7 +64,7 @@ app.post("/v1/chat/completions", async (req, res) => {
 if (nimModel.includes('deepseek') || nimModel.includes('kimi')) {
     nimRequest.chat_template_kwargs = {
         thinking: true,
-        reasoning_effort:"max"
+        reasoning_effort:1
     };
 } else if (nimModel.includes('glm') || nimModel.includes('qwen') || nimModel.includes('nemotron')) {
     nimRequest.chat_template_kwargs = {
