@@ -449,6 +449,3 @@ app.listen(
       `Gateway listening on ${PORT}`
     );
   }
-  
-);
-```
