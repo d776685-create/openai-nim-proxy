@@ -17,13 +17,13 @@ const NIM_API_KEY = process.env.NIM_API_KEY;
 
 // ---- model mapping (safe) ----
 const MODEL_MAPPING = {
-  'gpt-3.5-turbo': 'deepseek-ai/deepseek-v4-flash',
-  'gpt-4': 'deepseek-ai/deepseek-v3.2',
-  'gpt-4-turbo': 'z-ai/glm4.7',
-  'gpt-4o': 'moonshotai/kimi-k2.6',
-  'claude-3-opus': 'z-ai/glm-5.1',
-  'claude-3-sonnet': 'deepseek-ai/deepseek-v4-pro',
-  'gemini-pro': 'z-ai/glm5'
+  "claude-opus-4": "z-ai/glm-5.1",
+  "claude-sonnet-4": "deepseek-ai/deepseek-v4-pro",
+  "claude-3-7-sonnet": "deepseek-ai/deepseek-v4-pro",
+  "claude-3-5-sonnet": "deepseek-ai/deepseek-v4-pro",
+  "gpt-4o": "moonshotai/kimi-k2.6",
+  "gpt-4": "deepseek-ai/deepseek-v3.2",
+  "gpt-4-turbo": "z-ai/glm4.7"
 };
 
 const FALLBACK_MODEL = "meta/llama-3.1-8b-instruct";
