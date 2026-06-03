@@ -19,7 +19,7 @@ const NIM_API_KEY = process.env.NIM_API_KEY;
 const MODEL_MAPPING = {
   "claude-opus-4": "z-ai/glm-5.1",
   "claude-sonnet-4": "deepseek-ai/deepseek-v4-pro",
-  "claude-3-7-sonnet": "deepseek-ai/deepseek-v4-pro",
+  "claude-3-7-sonnet": "minimaxai/minimax-m2.7",
   "claude-3-5-sonnet": "deepseek-ai/deepseek-v4-pro",
   "gpt-4o": "moonshotai/kimi-k2.6",
   "gpt-4": "deepseek-ai/deepseek-v3.2",
