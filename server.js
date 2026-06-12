@@ -9,11 +9,9 @@ app.use(cors());
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
-// ---- Upstream NVIDIA Configuration ----
 const NIM_API_BASE = process.env.NIM_API_BASE || "https://integrate.api.nvidia.com/v1";
 const NIM_API_KEY = process.env.NIM_API_KEY;
 
-// ---- OpenCode to NVIDIA Model Map Matrix ----
 const MODEL_MAPPING = {
   "glm-5.1": "z-ai/glm-5.1",
   "deepseek-v4-pro": "deepseek-ai/deepseek-v4-pro",
@@ -25,89 +23,65 @@ const MODEL_MAPPING = {
 
 const FALLBACK_MODEL = "meta/llama-3.1-8b-instruct";
 
-// ---- 🔒 MUTEX PIPELINE QUEUE LOCK ----
-// Completely stops parallel SSE Stream structural corruption crashes upstream
-class RequestQueue {
+// ---- 🔒 LIGHTWEIGHT TEXT-STREAM LOCK ----
+// Only locks heavy output generations, allowing directory lookups to run instantly
+class StreamLock {
   constructor() {
-    this.queue = Promise.resolve();
+    this.activeLock = Promise.resolve();
   }
-  add(operation) {
+  acquire(operation) {
     return new Promise((resolve, reject) => {
-      this.queue = this.queue
+      this.activeLock = this.activeLock
         .then(() => operation())
         .then(resolve)
         .catch(reject);
     });
   }
 }
-const nVidiaLock = new RequestQueue();
+const textStreamLock = new StreamLock();
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// ---- Exponential Backoff Core Wrapper ----
-async function fetchWithRetry(url, data, config, retries = 4, backoff = 1500) {
+async function fetchWithRetry(url, data, config, retries = 3, backoff = 1000) {
   try {
     return await axios.post(url, data, config);
   } catch (err) {
     const status = err.response?.status;
-    // Handle transient drops, throttles, or temporary 503 engine spikes
     if ((status === 429 || status === 503) && retries > 0) {
-      console.warn(`⚠️ Upstream throttle status ${status}. Retrying block in ${backoff}ms...`);
       await delay(backoff);
-      return fetchWithRetry(url, data, config, retries - 1, backoff * 2);
+      return fetchWithRetry(url, data, config, retries - 1, backoff * 1.5);
     }
     throw err;
   }
 }
 
-// ---- 🧹 RECURSIVE CHAT HISTORY SANITIZER ----
-// Flattens complex Anthropic meta structures so the vLLM engine never throws an internal 500 error
 function sanitizeHistoryForNIM(messages) {
   if (!Array.isArray(messages)) return [];
-  
   return messages.map(msg => {
     const cleanMsg = { role: msg.role };
-    
-    // Convert array content or nested system components to a plain flat text string
     if (Array.isArray(msg.content)) {
-      cleanMsg.content = msg.content
-        .map(c => {
-          if (typeof c === 'string') return c;
-          if (c && typeof c === 'object') {
-            if (c.type === 'text') return c.text || '';
-            if (c.text) return c.text;
-          }
-          return '';
-        })
-        .join('\n').trim();
+      cleanMsg.content = msg.content.map(c => typeof c === 'string' ? c : (c?.text || '')).join('\n').trim();
     } else {
       cleanMsg.content = typeof msg.content === 'string' ? msg.content : "";
     }
-
-    // Force formatting alignment on past tool execution schemas
     if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
       cleanMsg.tool_calls = msg.tool_calls.map(tc => ({
         id: tc.id || `call_${Math.random().toString(36).substr(2, 9)}`,
         type: "function",
         function: {
           name: tc.function?.name || "",
-          arguments: typeof tc.function?.arguments === 'object' 
-            ? JSON.stringify(tc.function.arguments) 
-            : tc.function?.arguments || "{}"
+          arguments: typeof tc.function?.arguments === 'object' ? JSON.stringify(tc.function.arguments) : (tc.function?.arguments || "{}")
         }
       }));
     }
-
     if (msg.tool_call_id) {
       cleanMsg.tool_call_id = msg.tool_call_id;
       cleanMsg.name = msg.name || "tool_response";
     }
-
     return cleanMsg;
   });
 }
 
-// ---- Health Operations ----
 app.get("/health", (_, res) => res.json({ status: "ok" }));
 
 app.get("/v1/models", (_, res) => {
@@ -117,33 +91,33 @@ app.get("/v1/models", (_, res) => {
   });
 });
 
-// ---- Base Chat Completion Router ----
+// ---- Optimized Base Chat Completions Handler ----
 app.post("/v1/chat/completions", async (req, res) => {
-  // Push operations into the serial queue block to enforce stability
-  nVidiaLock.add(async () => {
-    try {
-      const { model, messages, temperature, max_tokens, stream, tools, tool_choice } = req.body;
-      const nimModel = MODEL_MAPPING[model] || FALLBACK_MODEL;
+  const { model, messages, temperature, max_tokens, stream, tools, tool_choice } = req.body;
+  
+  // ⚡ HIGH-SPEED SPEED RUN ROUTE: 
+  // If OpenCode is doing a rapid background check or metadata call (non-streaming tools check), 
+  // completely bypass the queue lock and execute it instantly in parallel!
+  const isParallelSafe = !stream && (!tools || tools.length === 0);
 
-      // Force parameter limits to match the maximum allowable free tier output bounds
+  const executeRequest = async () => {
+    try {
+      const nimModel = MODEL_MAPPING[model] || FALLBACK_MODEL;
       const safeMaxTokens = max_tokens && max_tokens <= 4096 ? max_tokens : 4096;
 
       const nimRequest = {
         model: nimModel,
         messages: sanitizeHistoryForNIM(messages),
-        temperature: temperature ?? 0.4, // Drop temperature slightly to stabilize long-context loops
+        temperature: temperature ?? 0.4,
         max_tokens: safeMaxTokens,
         stream: Boolean(stream),
       };
 
-      // Strip tools entirely if an empty array or null structure accidentally triggers parsing errors
       if (tools && Array.isArray(tools) && tools.length > 0) {
         nimRequest.tools = tools;
         if (tool_choice) nimRequest.tool_choice = tool_choice;
       }
 
-      // ---- 🛑 REASONING-TOOL CLASH PREVENTION ----
-      // Strips model reasoning controls if functional agent tools are currently active
       if (!nimRequest.tools) {
         if (nimModel.includes('deepseek') || nimModel.includes('kimi')) {
           nimRequest.chat_template_kwargs = { "thinking": true, "reasoning_effort": 1 };
@@ -166,14 +140,12 @@ app.post("/v1/chat/completions", async (req, res) => {
         }
       );
 
-      // ---- STREAM HANDLER LINE BLOCK ----
       if (stream) {
         res.setHeader("Content-Type", "text/event-stream");
         res.setHeader("Cache-Control", "no-cache");
         res.setHeader("Connection", "keep-alive");
         res.flushHeaders();
 
-        // Enforce a tracking promise so the Mutex Queue Lock remains closed until the stream terminates
         await new Promise((resolveStream, rejectStream) => {
           nimResponse.data.pipe(res);
           nimResponse.data.on("end", () => resolveStream());
@@ -185,7 +157,6 @@ app.post("/v1/chat/completions", async (req, res) => {
         return;
       }
 
-      // ---- STANDARD OBJECT RETURN ----
       return res.json({
         id: `chatcmpl-${Date.now()}`,
         object: "chat.completion",
@@ -201,24 +172,18 @@ app.post("/v1/chat/completions", async (req, res) => {
 
       console.error(`❌ Proxy Router Failure [HTTP ${statusCode || 'NET_ERR'}]:`, errorData || err.message);
 
-      // Free Account Credit Depletion Check
       if (statusCode === 402 || (statusCode === 403 && JSON.stringify(errorData).includes("quota"))) {
-        console.error("🚨 Account block triggered. Your NVIDIA free credits hit a zero balance.");
         if (!res.headersSent) {
           return res.status(402).json({ error: { message: "NVIDIA Developer Program credits exhausted." } });
         }
       }
 
-      // Dynamic Node Self-Healing Fallback
-      // If a model (like GLM-5.1) crashes, immediately fallback to MiniMax-M3 to preserve the user's workspace session state
       if ((statusCode === 500 || statusCode === 400 || statusCode === 429) && req.body.model !== "claude-3-7-sonnet") {
-        console.warn(`🔄 Route failure on primary node. Seamlessly migrating tasks to the MiniMax-M3 pipeline...`);
+        console.warn(`🔄 Route failure. Switching backend line execution to MiniMax-M3...`);
         try {
           req.body.model = "claude-3-7-sonnet";
           const fallbackResponse = await axios.post(`http://localhost:${PORT}/v1/chat/completions`, req.body);
-          if (!res.headersSent) {
-            return res.json(fallbackResponse.data);
-          }
+          if (!res.headersSent) return res.json(fallbackResponse.data);
         } catch (fallbackErr) {
           console.error("🚨 Critical Crash: All resilient model fallback lines exhausted.");
         }
@@ -228,15 +193,22 @@ app.post("/v1/chat/completions", async (req, res) => {
         res.status(500).json({ error: { message: "Upstream pipeline execution failure" } });
       }
     }
-  }).catch((queueErr) => {
-    if (!res.headersSent) {
-      res.status(500).json({ error: { message: "Internal server proxy lock exception" } });
-    }
-  });
+  };
+
+  // ---- Smart Traffic Distribution Routing ----
+  if (isParallelSafe) {
+    // If it's a structural call, fire it parallel instantly!
+    return executeRequest();
+  } else {
+    // If it's a heavy text/tool generation stream, drop it in the line lock
+    return textStreamLock.acquire(executeRequest).catch((err) => {
+      if (!res.headersSent) res.status(500).json({ error: { message: "Pipeline error" } });
+    });
+  }
 });
 
-app.use((req, res) => res.status(404).json({ error: { message: "Endpoint mapping routing signature missing" } }));
+app.use((req, res) => res.status(404).json({ error: { message: "Endpoint signature missing" } }));
 
 app.listen(PORT, () => {
-  console.log(`🚀 Resilient Queue-Locked Proxy active on port ${PORT}`);
+  console.log(`🚀 Optimized High-Speed Resilient Proxy active on port ${PORT}`);
 });
