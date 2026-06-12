@@ -25,7 +25,7 @@ const MODEL_MAPPING = {
   "glm4.7": "z-ai/glm4.7"
 };
 
-const FALLBACK_MODEL = "meta/llama-3.1-8b-instruct";
+const FALLBACK_MODEL = "z-ai/glm-5.1";
 
 // ---- health ----
 app.get("/health", (_, res) => {
