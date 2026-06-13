@@ -22,7 +22,8 @@ const MODEL_MAPPING = {
   "minimax-m3": "minimaxai/minimax-m3",
   "kimi-2.6": "moonshotai/kimi-k2.6",
   "deepseek-v4-flash": "deepseek-ai/deepseek-v4-flash",
-  "glm4.7": "z-ai/glm4.7"
+  "glm4.7": "z-ai/glm4.7",
+  "nemotron3": "nvidia/nemotron-3-ultra-550b-a55b"
 };
 
 const FALLBACK_MODEL = "z-ai/glm-5.1";
