@@ -17,7 +17,7 @@ const NIM_API_KEY = process.env.NIM_API_KEY;
 
 // ---- model mapping (safe) ----
 const MODEL_MAPPING = {
-  "glm-5.1": "z-ai/glm-5.1",
+  "gpt-4o": "z-ai/glm-5.1",
   "deepseek-v4-pro": "deepseek-ai/deepseek-v4-pro",
   "minimax-m3": "minimaxai/minimax-m3",
   "kimi-2.6": "moonshotai/kimi-k2.6",
