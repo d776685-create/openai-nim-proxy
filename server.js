@@ -12,7 +12,7 @@ app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
 // ---- NIM config ----
 const NIM_API_BASE =
-  process.env.NIM_API_BASE || "https://api.nvcf.nvidia.com/v1";
+  process.env.NIM_API_BASE || "https://api.nvcf.nvidia.com";
 const NIM_API_KEY = process.env.NIM_API_KEY;
 
 // ---- model mapping (safe) ----
@@ -79,7 +79,7 @@ app.post("/v1/chat/completions", async (req, res) => {
     }
 
     const nimResponse = await axios.post(
-      `${NIM_API_BASE}/chat/completions`,
+      `${NIM_API_BASE}/v1/chat/completions`,
       nimRequest,
       {
         headers: {
