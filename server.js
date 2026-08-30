@@ -18,10 +18,10 @@ const NIM_API_KEY = process.env.NIM_API_KEY;
 // ---- model mapping (safe) ----
 const MODEL_MAPPING = {
   "glm-5.2": "z-ai/glm-5.2",
-  "deepseek-v4-pro": "deepseek-ai/deepseek-v4-flash-0731",
+  "deepseek-v4-pro": "deepseek-ai/deepseek-v4-pro-0813",
   "minimax-m3": "minimaxai/minimax-m3",
-  "kimi-2.6": "moonshotai/kimi-k2.6",
-  "deepseek-v4-flash": "deepseek-ai/deepseek-v4-flash",
+  "kimi-3": "moonshotai/kimi-k3",
+  "deepseek-v4-flash": "deepseek-ai/deepseek-v4-flash-0731",
   "glm-4.7": "z-ai/glm-5.2",
   "nemotron3": "nvidia/nemotron-3-ultra-550b-a55b"
 };
