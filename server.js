@@ -74,7 +74,7 @@ app.post("/v1/chat/completions", async (req, res) => {
         };
     } else if (nimModel.includes('glm') || nimModel.includes('qwen') || nimModel.includes('nemotron')) {
         nimRequest.chat_template_kwargs = {
-            enable_thinking: true
+            enable_thinking: false
         };
     }
 
